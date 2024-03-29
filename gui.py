@@ -231,7 +231,7 @@ class MainWindow(QMainWindow):
             self.screenshots_source_label.setText(f"Selected screenshots source folder: {screenshots_source_folder}")
             self.run_screenshots_button.setEnabled(True)
             self.save_config()
-            self.update_cost_estimate()  
+            self.update_cost_estimate()  # Move this line inside the if block
 
     def select_scene_detection_destination_folder(self):
         scene_detection_destination_folder = QFileDialog.getExistingDirectory(self, "Select Scene Detection Destination Folder")
@@ -318,6 +318,7 @@ class MainWindow(QMainWindow):
             excel_filename = f"descriptions_{timestamp}.xlsx"
             excel_path = os.path.join(self.screenshots_source_folder, excel_filename)
             df = pd.DataFrame(descriptions)
+            df = df[["Image", "Description"]]  # Reorder the columns
             df.to_excel(excel_path, index=False)
             return excel_path
         else:

@@ -9,6 +9,7 @@ from PyQt5.QtCore import Qt
 
 load_dotenv()
 
+
 def create_composite_image(image_paths):
     images = [Image.open(image_path) for image_path in image_paths]
     widths, heights = zip(*(i.size for i in images))
@@ -27,6 +28,7 @@ def create_composite_image(image_paths):
     composite_image.save(composite_image_path)
 
     return composite_image_path
+
 
 def process_screenshots(screenshots_folder, prompt, image_treatment_mode, sequence_length, overlap, detail_mode, progress_callback=None):
     openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -50,7 +52,7 @@ def process_screenshots(screenshots_folder, prompt, image_treatment_mode, sequen
         for i, image_file in enumerate(image_files, start=1):
             image_path = os.path.join(screenshots_folder, image_file)
             description = generate_description(openai, model, max_tokens, [image_path], prompt, detail_mode)
-            descriptions.append({"Image": image_file, "Description": description})
+            descriptions.append({"Image": image_file, "Description": description[0]})
             if progress_callback:
                 progress_callback(i, len(image_files))
     else:
@@ -79,6 +81,7 @@ def process_screenshots(screenshots_folder, prompt, image_treatment_mode, sequen
 
     return descriptions
 
+
 def generate_sequences(image_files, sequence_length, overlap):
     print("Entering generate_sequences function...")
     sequences = []
@@ -103,49 +106,18 @@ def confirm_sequences(sequences):
     if app is None:
         app = QApplication([])
 
-    dialog = QDialog()
-    dialog.setWindowTitle("Confirm Sequences")
-    dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
-    print(f"Dialog created with title: {dialog.windowTitle()}")
-
-    layout = QVBoxLayout()
-    print("Vertical layout created")
-
-    message_label = QLabel("The following sequences will be sent to the AI:")
-    layout.addWidget(message_label)
-    print("Message label added to the layout")
-
+    message = "The following sequences will be sent to the AI:\n\n"
     for i, sequence in enumerate(sequences, start=1):
-        sequence_label = QLabel(f"Sequence {i}: {', '.join(sequence)}")
-        layout.addWidget(sequence_label)
-        print(f"Sequence {i} label added to the layout")
+        message += f"Sequence {i}: {', '.join(sequence)}\n"
+    message += "\nDo you want to proceed?"
 
-    confirmation_label = QLabel("Do you want to proceed?")
-    layout.addWidget(confirmation_label)
-    print("Confirmation label added to the layout")
+    reply = QMessageBox.question(None, "Confirm Sequences", message, QMessageBox.Yes | QMessageBox.No)
 
-    button_box = QHBoxLayout()
-    print("Horizontal button box layout created")
-
-    yes_button = QPushButton("Yes")
-    yes_button.clicked.connect(dialog.accept)
-    button_box.addWidget(yes_button)
-    print("Yes button added to the button box layout")
-
-    no_button = QPushButton("No")
-    no_button.clicked.connect(dialog.reject)
-    button_box.addWidget(no_button)
-    print("No button added to the button box layout")
-
-    layout.addLayout(button_box)
-    print("Button box layout added to the main layout")
-
-    dialog.setLayout(layout)
-    print("Layout set for the dialog")
+    return reply == QMessageBox.Yes
 
 
 def generate_description(client, model, max_tokens, image_paths, prompt, detail_mode):
-    messages = [{"role": "system", "content": "You are an AI assistant that describes images."}]
+    messages = []
 
     messages.append({
         "role": "user",
@@ -166,6 +138,8 @@ def generate_description(client, model, max_tokens, image_paths, prompt, detail_
                 "detail": detail_mode.lower()
             },
         })
+
+    # Rest of the code remains the same
 
     print("Querying AI with the following parameters:")
     print(f"Model: {model}")
