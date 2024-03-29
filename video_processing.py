@@ -40,7 +40,8 @@ def process_video(video_path, output_folder, sensitivity):
             
             # Save the keyframe for the scene
             print(f"Saving keyframe at frame: {start_frame}")
-            keyframe_path = os.path.join(output_folder, f"keyframe_{start_frame}.jpg")
+            keyframe_filename = f"keyframe_{start_frame:06d}.jpg"  # Add leading zeroes
+            keyframe_path = os.path.join(output_folder, keyframe_filename)
             cv2.imwrite(keyframe_path, frame)
         
         # Release the video capture
