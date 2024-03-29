@@ -10,6 +10,7 @@ from video_processing import process_video
 from screenshot_processing import process_screenshots
 from utils import calculate_token_cost
 
+
 class VideoProcessingThread(QThread):
     processing_finished = pyqtSignal(str)
 
@@ -23,22 +24,28 @@ class VideoProcessingThread(QThread):
         output_folder = process_video(self.video_path, self.output_folder, self.sensitivity)
         self.processing_finished.emit(output_folder)
 
+
 class ScreenshotProcessingThread(QThread):
     processing_finished = pyqtSignal(list)
     progress_updated = pyqtSignal(int)
 
-    def __init__(self, screenshots_folder, prompt):
+    def __init__(self, screenshots_folder, prompt, image_treatment_mode, sequence_length, overlap, detail_mode):
         super().__init__()
         self.screenshots_folder = screenshots_folder
         self.prompt = prompt
+        self.image_treatment_mode = image_treatment_mode
+        self.sequence_length = sequence_length
+        self.overlap = overlap
+        self.detail_mode = detail_mode
 
     def run(self):
         def progress_callback(current, total):
             progress = int((current / total) * 100)
             self.progress_updated.emit(progress)
 
-        descriptions = process_screenshots(self.screenshots_folder, self.prompt, progress_callback)
+        descriptions = process_screenshots(self.screenshots_folder, self.prompt, self.image_treatment_mode, self.sequence_length, self.overlap, self.detail_mode, progress_callback)
         self.processing_finished.emit(descriptions)
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -249,7 +256,7 @@ class MainWindow(QMainWindow):
             current_item = self.prompts_listbox.currentItem()
             if current_item:
                 prompt = self.prompts_config.get("Prompts", current_item.text())
-                self.screenshot_processing_thread = ScreenshotProcessingThread(self.screenshots_source_folder, prompt)
+                self.screenshot_processing_thread = ScreenshotProcessingThread(self.screenshots_source_folder, prompt, self.image_treatment_mode, self.sequence_length, self.overlap, self.detail_mode)
                 self.screenshot_processing_thread.processing_finished.connect(self.screenshot_processing_finished)
                 self.screenshot_processing_thread.progress_updated.connect(self.update_progress)
                 self.screenshot_processing_thread.start()
