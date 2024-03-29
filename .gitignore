@@ -1,6 +1,7 @@
 #Project-specific
 0.?.?/
-*.mp*
+*.mp?
+*.xlsx
 screenshots/
 
 # Byte-compiled / optimized / DLL files
