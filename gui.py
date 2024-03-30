@@ -3,6 +3,8 @@ import configparser
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QPushButton, QVBoxLayout, QWidget, QProgressBar, QMessageBox, QLabel, QSpinBox, QHBoxLayout, QListWidget, QLineEdit, QTextEdit, QComboBox, QRadioButton
 import pandas as pd
 from datetime import datetime
+from independent_mode import process_screenshots_independent
+from sequential_mode import process_screenshots_sequential
 
 # Video processing thread
 from PyQt5.QtCore import QThread, pyqtSignal
@@ -43,7 +45,11 @@ class ScreenshotProcessingThread(QThread):
             progress = int((current / total) * 100)
             self.progress_updated.emit(progress)
 
-        descriptions = process_screenshots(self.screenshots_folder, self.prompt, self.image_treatment_mode, self.sequence_length, self.overlap, self.detail_mode, progress_callback)
+        if self.image_treatment_mode == "Independent":
+            descriptions = process_screenshots_independent(self.screenshots_folder, self.prompt, self.detail_mode, progress_callback)
+        else:
+            descriptions = process_screenshots_sequential(self.screenshots_folder, self.prompt, self.sequence_length, self.overlap, self.detail_mode, progress_callback)
+
         self.processing_finished.emit(descriptions)
 
 
@@ -54,11 +60,39 @@ class MainWindow(QMainWindow):
         self.setGeometry(100, 100, 800, 1000)
         self.prompts_file = "prompts.ini"
         self.prompts_config = configparser.ConfigParser()
+        
+        self.image_treatment_label = QLabel("Image Treatment Mode:")
+        self.image_treatment_combo = QComboBox()
+        self.image_treatment_combo.addItems(["Independent", "Consequent"])
+        self.image_treatment_combo.currentTextChanged.connect(self.update_image_treatment_mode)
+
+        self.sequence_length_spinbox = QSpinBox()
+        self.sequence_length_spinbox.setMinimum(1)
+        self.sequence_length_spinbox.setValue(5)
+        self.sequence_length_spinbox.valueChanged.connect(self.update_sequence_length)
+
+        self.overlap_spinbox = QSpinBox()
+        self.overlap_spinbox.setMinimum(0)
+        self.overlap_spinbox.setValue(2)
+        self.overlap_spinbox.valueChanged.connect(self.update_overlap)
+
+        self.detail_mode_combo = QComboBox()
+        self.detail_mode_combo.addItems(["Low", "High", "Auto"])
+        self.detail_mode_combo.currentTextChanged.connect(self.update_detail_mode)
+        
+        self.delete_prompt_button = QPushButton("Delete Prompt")
+        self.delete_prompt_button.clicked.connect(self.delete_prompt)
+
+        self.prompts_listbox = QListWidget()
+        self.prompts_listbox.itemClicked.connect(self.select_prompt)
 
         self.video_path = None
         self.scene_detection_destination_folder = None
         self.screenshots_source_folder = None
         self.sensitivity = 30
+
+        self.save_prompt_button = QPushButton("Save Prompt")
+        self.save_prompt_button.clicked.connect(self.save_prompt)
 
         self.config_file = "config.ini"
 
@@ -113,6 +147,7 @@ class MainWindow(QMainWindow):
         self.delete_prompt_button = QPushButton("Delete Prompt")
         self.delete_prompt_button.clicked.connect(self.delete_prompt)
 
+
         self.image_treatment_label = QLabel("Image Treatment Mode:")
         self.image_treatment_combo = QComboBox()
         self.image_treatment_combo.addItems(["Independent", "Consequent"])
@@ -136,6 +171,8 @@ class MainWindow(QMainWindow):
         self.detail_mode_combo.currentTextChanged.connect(self.update_detail_mode)
 
         self.cost_label = QLabel("Estimated Token Cost: 0")
+
+        self.load_prompts()
 
         layout = QVBoxLayout()
         layout.addWidget(self.select_video_button)
@@ -267,9 +304,69 @@ class MainWindow(QMainWindow):
     def update_progress(self, value):
         self.progress_bar.setValue(value)
 
+    def select_prompt(self, item):
+        prompt = self.prompts_config.get("Prompts", item.text())
+        self.prompt_edit.setText(prompt)
+
+    def save_prompt(self):
+        prompt_name = self.prompt_edit.text().split(".")[0]
+        self.prompts_config.set("Prompts", prompt_name, self.prompt_edit.text())
+        with open(self.prompts_file, "w") as f:
+            self.prompts_config.write(f)
+        self.load_prompts()
+    
+    def delete_prompt(self):
+        current_item = self.prompts_listbox.currentItem()
+        if current_item:
+            self.prompts_config.remove_option("Prompts", current_item.text())
+            with open(self.prompts_file, "w") as f:
+                self.prompts_config.write(f)
+            self.load_prompts()
+
+    def update_image_treatment_mode(self, mode):
+        self.image_treatment_mode = mode
+        self.sequence_length_label.setVisible(mode == "Consequent")
+        self.sequence_length_spinbox.setVisible(mode == "Consequent")
+        self.overlap_label.setVisible(mode == "Consequent")
+        self.overlap_spinbox.setVisible(mode == "Consequent")
+        self.save_config()
+        self.update_cost_estimate()
+
+    def update_sequence_length(self, value):
+        self.sequence_length = value
+        self.save_config()
+        self.update_cost_estimate()
+
+    def update_overlap(self, value):
+        self.overlap = value
+        self.save_config()
+        self.update_cost_estimate()
+
+    def update_detail_mode(self, mode):
+        self.detail_mode = mode
+        self.save_config()
+        self.update_cost_estimate()
+
+    def update_cost_estimate(self):
+        cost = calculate_token_cost(self.screenshots_source_folder, self.detail_mode, self.image_treatment_mode, self.sequence_length, self.overlap)
+        self.cost_label.setText(f"Estimated Token Cost: {cost}")
+
+    def load_prompts(self):
+        if not os.path.exists(self.prompts_file):
+            self.prompts_config["Prompts"] = {}
+            with open(self.prompts_file, "w") as f:
+                self.prompts_config.write(f)
+        else:
+            self.prompts_config.read(self.prompts_file)
+        self.prompts_listbox.clear()
+        for prompt in self.prompts_config.options("Prompts"):
+            self.prompts_listbox.addItem(prompt)
+
     def screenshot_processing_finished(self, descriptions):
-            self.progress_bar.setVisible(False)
-            self.descriptions_text_edit.clear()
+        self.progress_bar.setVisible(False)
+        self.descriptions_text_edit.clear()
+
+        if descriptions:
             for description in descriptions:
                 self.descriptions_text_edit.append(f"Image: {description['Image']}")
                 self.descriptions_text_edit.append(f"Description: {description['Description']}")
@@ -277,6 +374,8 @@ class MainWindow(QMainWindow):
             
             excel_path = self.save_descriptions_to_excel(descriptions)
             QMessageBox.information(self, "Processing Complete", f"Screenshot processing finished. Descriptions saved in {excel_path}")
+        else:
+            QMessageBox.information(self, "Processing Aborted", "Screenshot processing aborted. No descriptions generated.")
 
     def load_prompts(self):
         if not os.path.exists(self.prompts_file):
@@ -318,8 +417,8 @@ class MainWindow(QMainWindow):
             excel_filename = f"descriptions_{timestamp}.xlsx"
             excel_path = os.path.join(self.screenshots_source_folder, excel_filename)
             df = pd.DataFrame(descriptions)
-            df = df[["Image", "Description"]]  # Reorder the columns
-            df.to_excel(excel_path, index=False)
+            df = df[["Description", "Image"]]  # Reorder the columns
+            df.to_excel(excel_path, index=False, header=["Description", "Composite Image"])
             return excel_path
         else:
             QMessageBox.warning(self, "No Screenshots Source Folder", "Please select a screenshots source folder.")
